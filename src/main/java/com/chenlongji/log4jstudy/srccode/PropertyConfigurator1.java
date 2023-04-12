@@ -1,5 +1,5 @@
 
-package com.chenlongji.log4jstudy.temp;
+package com.chenlongji.log4jstudy.srccode;
 
 import org.apache.log4j.*;
 import org.apache.log4j.config.PropertySetter;

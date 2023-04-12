@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.chenlongji.log4jstudy.temp;
+package com.chenlongji.log4jstudy.srccode;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.PropertyConfigurator;

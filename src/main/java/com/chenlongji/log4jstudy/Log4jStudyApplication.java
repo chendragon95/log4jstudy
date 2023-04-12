@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
  * @author clj
+ * 该代码与log4j无关
  */
 @SpringBootApplication
 public class Log4jStudyApplication {

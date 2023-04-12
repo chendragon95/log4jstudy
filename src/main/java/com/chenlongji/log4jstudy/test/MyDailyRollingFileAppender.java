@@ -1,4 +1,4 @@
-package com.chenlongji.log4jstudy;
+package com.chenlongji.log4jstudy.test;
 
 import org.apache.log4j.FileAppender;
 import org.apache.log4j.Layout;
@@ -16,6 +16,7 @@ import java.util.*;
 
 /**
  * @author clj
+ * 自定义的DailyRollingFileAppender, 用于自动删除过期的日志
  */
 public class MyDailyRollingFileAppender extends FileAppender {
 
