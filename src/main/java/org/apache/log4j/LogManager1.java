@@ -15,11 +15,8 @@
  * limitations under the License.
  */
 
-package com.chenlongji.log4jstudy.srccode;
+package org.apache.log4j;
 
-import org.apache.log4j.Hierarchy;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
 import org.apache.log4j.helpers.Loader;
 import org.apache.log4j.helpers.LogLog;
 import org.apache.log4j.helpers.OptionConverter;

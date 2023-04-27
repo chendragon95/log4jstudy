@@ -1,7 +1,6 @@
 
-package com.chenlongji.log4jstudy.srccode;
+package org.apache.log4j;
 
-import org.apache.log4j.*;
 import org.apache.log4j.config.PropertySetter;
 import org.apache.log4j.helpers.FileWatchdog;
 import org.apache.log4j.helpers.LogLog;
@@ -23,7 +22,7 @@ public class PropertyConfigurator1 implements Configurator {
      */
     protected Hashtable registry = new Hashtable(11);
     private LoggerRepository repository;
-    protected LoggerFactory loggerFactory/* = new DefaultCategoryFactory()*/;
+    protected LoggerFactory loggerFactory = new DefaultCategoryFactory();
 
     static final String CATEGORY_PREFIX = "log4j.category.";
     static final String LOGGER_PREFIX = "log4j.logger.";
@@ -390,9 +389,9 @@ public class PropertyConfigurator1 implements Configurator {
      */
     static
     public void configureAndWatch(String configFilename, long delay) {
-        /*org.apache.log4j.PropertyWatchdog pdog = new org.apache.log4j.PropertyWatchdog(configFilename);
+        PropertyWatchdog pdog = new PropertyWatchdog(configFilename);
         pdog.setDelay(delay);
-        pdog.start();*/
+        pdog.start();
     }
 
 
@@ -434,7 +433,7 @@ public class PropertyConfigurator1 implements Configurator {
         parseCatsAndRenderers(properties, hierarchy);
 
         LogLog.debug("Finished configuring.");
-        // 去除hierarchy缓存, 以便不影响垃圾回收
+        // 去除registry缓存(该缓存作用: 缓存初始化过程中的appender), 以便不影响垃圾回收
         registry.clear();
     }
 
@@ -505,15 +504,14 @@ public class PropertyConfigurator1 implements Configurator {
      * @see #parseCatsAndRenderers
      */
     protected void configureLoggerFactory(Properties props) {
-        String factoryClassName = OptionConverter.findAndSubst(LOGGER_FACTORY_KEY,
-                props);
+        // 获取配置文件loggerFactory全限定名, 创建loggerFactory实例
+        String factoryClassName = OptionConverter.findAndSubst("log4j.loggerFactory", props);
         if (factoryClassName != null) {
             LogLog.debug("Setting category factory to [" + factoryClassName + "].");
             loggerFactory = (LoggerFactory)
-                    OptionConverter.instantiateByClassName(factoryClassName,
-                            LoggerFactory.class,
-                            loggerFactory);
-            PropertySetter.setProperties(loggerFactory, props, FACTORY_PREFIX + ".");
+                    OptionConverter.instantiateByClassName(factoryClassName, LoggerFactory.class, loggerFactory);
+            // 反射设置loggerFactory的属性
+            PropertySetter.setProperties(loggerFactory, props, "log4j.factory" + ".");
         }
     }
 
@@ -569,10 +567,12 @@ public class PropertyConfigurator1 implements Configurator {
      * Parse non-root elements, such non-root categories and renderers.
      */
     protected void parseCatsAndRenderers(Properties props, LoggerRepository hierarchy) {
+        // 遍历Properties中所有的key
         Enumeration enumeration = props.propertyNames();
         while (enumeration.hasMoreElements()) {
             String key = (String) enumeration.nextElement();
             if (key.startsWith(CATEGORY_PREFIX) || key.startsWith(LOGGER_PREFIX)) {
+                // 解析所有log4j.category.开头和log4j.logger.开头的key
                 String loggerName = null;
                 if (key.startsWith(CATEGORY_PREFIX)) {
                     loggerName = key.substring(CATEGORY_PREFIX.length());
@@ -580,12 +580,16 @@ public class PropertyConfigurator1 implements Configurator {
                     loggerName = key.substring(LOGGER_PREFIX.length());
                 }
                 String value = OptionConverter.findAndSubst(key, props);
+                // 核心代码: 创建出自定义logger对象, 绑定其与其他logger的关系
                 Logger logger = hierarchy.getLogger(loggerName, loggerFactory);
                 synchronized (logger) {
+                    // 核心代码: 解析非根logger 及绑定它的appender(这里和根logger解析是同一个方法)
                     parseCategory(props, logger, key, loggerName, value);
+                    // 解析additivity属性, 设置到logger中
                     parseAdditivityForLogger(props, logger, loggerName);
                 }
             } else if (key.startsWith(RENDERER_PREFIX)) {
+                // 解析所有log4j.renderer.开头的key, 初始化和绑定渲染器. 较少使用, 不展开讲
                 String renderedClass = key.substring(RENDERER_PREFIX.length());
                 String renderingClass = OptionConverter.findAndSubst(key, props);
                 if (hierarchy instanceof RendererSupport) {
@@ -593,20 +597,16 @@ public class PropertyConfigurator1 implements Configurator {
                             renderingClass);
                 }
             } else if (key.equals(THROWABLE_RENDERER_PREFIX)) {
+                // 解析所有log4j.throwableRenderer开头的异常渲染器, 初始化和绑定异常渲染器. 较少使用, 不展开讲
                 if (hierarchy instanceof ThrowableRendererSupport) {
                     ThrowableRenderer tr = (ThrowableRenderer)
-                            OptionConverter.instantiateByKey(props,
-                                    THROWABLE_RENDERER_PREFIX,
-                                    ThrowableRenderer.class,
-                                    null);
+                            OptionConverter.instantiateByKey(props, THROWABLE_RENDERER_PREFIX, ThrowableRenderer.class, null);
                     if (tr == null) {
-                        LogLog.error(
-                                "Could not instantiate throwableRenderer.");
+                        LogLog.error("Could not instantiate throwableRenderer.");
                     } else {
                         PropertySetter setter = new PropertySetter(tr);
                         setter.setProperties(props, THROWABLE_RENDERER_PREFIX + ".");
                         ((ThrowableRendererSupport) hierarchy).setThrowableRenderer(tr);
-
                     }
                 }
             }
@@ -616,16 +616,14 @@ public class PropertyConfigurator1 implements Configurator {
     /**
      * Parse the additivity option for a non-root category.
      */
-    void parseAdditivityForLogger(Properties props, Logger cat,
-                                  String loggerName) {
-        String value = OptionConverter.findAndSubst(ADDITIVITY_PREFIX + loggerName,
-                props);
+    void parseAdditivityForLogger(Properties props, Logger cat, String loggerName) {
+        // 获取additivity属性(key为log4j.additivity.[loggerName])
+        String value = OptionConverter.findAndSubst(ADDITIVITY_PREFIX + loggerName, props);
         LogLog.debug("Handling " + ADDITIVITY_PREFIX + loggerName + "=[" + value + "]");
-        // touch additivity only if necessary
+        // 设置到logger的additive字段中(作用: 表示打印本logger日志后, 是否将日志添加到父级logger日志中处理, 默认值为true)
         if ((value != null) && (!value.equals(""))) {
             boolean additivity = OptionConverter.toBoolean(value, true);
-            LogLog.debug("Setting additivity for \"" + loggerName + "\" to " +
-                    additivity);
+            LogLog.debug("Setting additivity for \"" + loggerName + "\" to " + additivity);
             cat.setAdditivity(additivity);
         }
     }
@@ -683,7 +681,7 @@ public class PropertyConfigurator1 implements Configurator {
     }
 
     Appender parseAppender(Properties props, String appenderName) {
-        // 根据appenderName获取registry缓存中的appender
+        // 根据appenderName获取registry缓存中的appender, 若存在则直接放回
         Appender appender = registryGet(appenderName);
         if ((appender != null)) {
             LogLog.debug("Appender \"" + appenderName + "\" was already parsed.");
@@ -711,7 +709,7 @@ public class PropertyConfigurator1 implements Configurator {
                     // 设置appender的layout
                     appender.setLayout(layout);
                     LogLog.debug("Parsing layout options for \"" + appenderName + "\".");
-                    // 反射设置layout属性(layout.conversionPattern), 初始化解析器(代码位置: org.apache.log4j.helpers.PatternParser.parse)
+                    // 反射设置layout属性(layout.conversionPattern), 初始化解析器(代码位置: org.apache.log4j.helpers.PatternParser1.parse)
                     PropertySetter.setProperties(layout, props, layoutPrefix + ".");
                     LogLog.debug("End of parsing for \"" + appenderName + "\".");
                 }
@@ -753,11 +751,13 @@ public class PropertyConfigurator1 implements Configurator {
                 }
 
             }
-            //configureOptionHandler((OptionHandler) appender, prefix + ".", props);
+            // 反射设置appender的其他属性(如encoding、threshold、maxFileSize、datePattern). PropertySetter.setProperties(...)该方法会经常使用到
             PropertySetter.setProperties(appender, props, prefix + ".");
             LogLog.debug("Parsed \"" + appenderName + "\" options.");
         }
+        // 解析appender的Filter. 使用较少, 这里不展开讲
         parseAppenderFilters(props, appenderName, appender);
+        // 加入registry缓存中
         registryPut(appender);
         return appender;
     }
@@ -804,7 +804,7 @@ public class PropertyConfigurator1 implements Configurator {
                 String filterKey = key;
                 if (dotIdx != -1) {
                     filterKey = key.substring(0, dotIdx);
-                    name = key.substring(dotIdx + 1);
+                    name = key.substring(dotIdx+1);
                 }
                 Vector filterOpts = (Vector) filters.get(filterKey);
                 if (filterOpts == null) {
@@ -813,37 +813,37 @@ public class PropertyConfigurator1 implements Configurator {
                 }
                 if (dotIdx != -1) {
                     String value = OptionConverter.findAndSubst(key, props);
-                    //filterOpts.add(new org.apache.log4j.NameValue(name, value));
+                    filterOpts.add(new NameValue(name, value));
                 }
             }
         }
 
         // sort filters by IDs, insantiate filters, set filter options,
         // add filters to the appender
-        /*Enumeration g = new org.apache.log4j.SortedKeyEnumeration(filters);
+        Enumeration g = new SortedKeyEnumeration(filters);
         while (g.hasMoreElements()) {
             String key = (String) g.nextElement();
             String clazz = props.getProperty(key);
             if (clazz != null) {
-                LogLog.debug("Filter key: [" + key + "] class: [" + props.getProperty(key) + "] props: " + filters.get(key));
+                LogLog.debug("Filter key: ["+key+"] class: ["+props.getProperty(key) +"] props: "+filters.get(key));
                 Filter filter = (Filter) OptionConverter.instantiateByClassName(clazz, Filter.class, null);
                 if (filter != null) {
                     PropertySetter propSetter = new PropertySetter(filter);
-                    Vector v = (Vector) filters.get(key);
+                    Vector v = (Vector)filters.get(key);
                     Enumeration filterProps = v.elements();
                     while (filterProps.hasMoreElements()) {
-                        org.apache.log4j.NameValue kv = (org.apache.log4j.NameValue) filterProps.nextElement();
+                        NameValue kv = (NameValue)filterProps.nextElement();
                         propSetter.setProperty(kv.key, kv.value);
                     }
                     propSetter.activate();
-                    LogLog.debug("Adding filter of type [" + filter.getClass()
-                            + "] to appender named [" + appender.getName() + "].");
+                    LogLog.debug("Adding filter of type ["+filter.getClass()
+                            +"] to appender named ["+appender.getName()+"].");
                     appender.addFilter(filter);
                 }
             } else {
-                LogLog.warn("Missing class definition for filter: [" + key + "]");
+                LogLog.warn("Missing class definition for filter: ["+key+"]");
             }
-        }*/
+        }
     }
 
 
